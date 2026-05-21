@@ -18,7 +18,7 @@ def create_boxcar_targets(picks, window_size=3000, coda_multiplier=1.5):
         targets: Επιστρέφει έναν tensor (batch_size, window_size, 1) οπου θα περιέχει 1 κατα την διάρκεια του σεισμούς και
         0 σε περιόδους ηρεμίας
     """
-    B = picks.shape[0]
+    B = picks.shape[0] 
     #print(B)
     
     # 1. Προετοιμασία των waves για broadcast
@@ -62,16 +62,16 @@ def plot_detection_results(waveform, target, prediction, sample_rate=100, sample
     Saves the output to a PNG file.
     """
     
-    # 1. Convert PyTorch tensors to NumPy arrays safely
+    # 1. Εναλλαγή tensor σε numpy 
     if torch.is_tensor(waveform):
         waveform = waveform.detach().cpu().numpy()
     if torch.is_tensor(target):
         target = target.detach().cpu().numpy()
     if torch.is_tensor(prediction):
-        # CRITICAL FIX: Apply sigmoid to get 0.0 - 1.0 probabilities
+        # Για το prediction, εφαρμόζουμε sigmoid για να πάρουμε πιθανότητες 0 εως 1
         prediction = torch.sigmoid(prediction).detach().cpu().numpy() 
 
-    # 2. Extract the specific sample from the batch using sample_idx
+    # 2. Εξάγετε το συγκεκριμένο δείγμα από την παρτίδα χρησιμοποιώντας το sample_idx
     if waveform.ndim == 3: 
         waveform = waveform[sample_idx]
     if target.ndim == 3: 
@@ -79,18 +79,18 @@ def plot_detection_results(waveform, target, prediction, sample_rate=100, sample
     if prediction.ndim == 3: 
         prediction = prediction[sample_idx]
         
-    # 3. Squeeze the last dimension of targets and predictions so they are 1D arrays
+    # 3. κάνε τα target και prediction 1D arrays για το plotting
     target = target.squeeze()
     prediction = prediction.squeeze()
 
-    # Create a time axis in seconds
+    # Φτιάξε τον άξονα του χρόνου με βάση το sample_rate και το μήκος του waveform
     time_steps = waveform.shape[0]
     time_axis = np.arange(time_steps) / sample_rate
 
-    # 4. Set up the figure with better margins
+    # 4. Δημιουργία του plot με δύο υπο-διαγράμματα (subplots)
     fig, (ax1, ax2) = plt.subplots(nrows=2, ncols=1, figsize=(14, 7), sharex=True)
 
-    # --- TOP AXIS: Seismic Waveform ---
+    
     ax1.plot(time_axis, waveform[:, 0], color='gray', alpha=0.6, label='Channel E')
     ax1.plot(time_axis, waveform[:, 1], color='blue', alpha=0.4, label='Channel N')
     ax1.plot(time_axis, waveform[:, 2], color='black', alpha=0.8, linewidth=1.2, label='Channel Z')
@@ -102,7 +102,7 @@ def plot_detection_results(waveform, target, prediction, sample_rate=100, sample
     ax1.spines['top'].set_visible(False)
     ax1.spines['right'].set_visible(False)
 
-    # --- BOTTOM AXIS: Targets vs Predictions ---
+   
     ax2.fill_between(time_axis, 0, target, color='lightgray', alpha=0.5, label='Ground Truth Boxcar')
     ax2.plot(time_axis, target, color='black', linestyle='--', linewidth=1.5)
     
@@ -120,18 +120,19 @@ def plot_detection_results(waveform, target, prediction, sample_rate=100, sample
 
 
     plt.tight_layout(pad=2.0, h_pad=2.0)
-    plt.savefig(f"test_{sample_idx}.png")
+    plt.savefig(f"../test_results/test_{sample_idx}.png")
     plt.close(fig) 
 
 if __name__ == "__main__":
     device = "cuda" if torch.cuda.is_available() else "cpu"
+    print(f"Using device: {device}")
     batch_size = 32
     random_seed = 10
     num_epochs = 10
     
     model = EventDetectionLSTM().to(device)
     optim = torch.optim.Adam(model.parameters(), lr=1e-3)
-    H5_PATH = "datasets/waveform_h5/merged_bigger.hdf5" #DATASET PATH
+    H5_PATH = "../datasets/waveform_h5/merged_bigger.hdf5" #DATASET PATH
     train_loader, val_loader, test_loader = create_dataloaders(H5_PATH, batch_size=batch_size, random_seed=random_seed)
     #print(train_loader)
     criterion = nn.BCEWithLogitsLoss()
@@ -153,7 +154,7 @@ if __name__ == "__main__":
             optim.zero_grad()
             logits = model(waveforms)
             
-            # Create boxcar targets based on picks
+            # Φτιάξε τα targets με την συνάρτηση create_boxcar_targets και υπολόγισε το loss
             targets = create_boxcar_targets(picks)
             targets = targets.to(device)
             
@@ -185,7 +186,7 @@ if __name__ == "__main__":
         print(f"Epoch {epoch+1} Average Validation Loss: {avg_val_loss:.4f}")
     
     
-    # Test the model and plot results for a few samples
+    # Τώρα που το μοντέλο έχει εκπαιδευτεί, ας το αξιολογήσουμε στο test set και να υπολογίσουμε τις μετρικές 
     model.eval()
     total_test_loss = 0.0
 
@@ -241,4 +242,4 @@ if __name__ == "__main__":
     print(f"Average Test Loss: {avg_test_loss:.4f}")
     
 
-    # H5_PATH = "datasets/waveform_h5/merged_bigger.hdf5" #DATASET PATH
+    

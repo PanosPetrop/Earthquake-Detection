@@ -2,7 +2,7 @@ import os
 from huggingface_hub import hf_hub_download
 
 # Use "." for the current directory, or a specific folder name like "data"
-save_dir = "./datasets" 
+save_dir = "../datasets" 
 os.makedirs(save_dir, exist_ok=True)
 
 print("Downloading NCEDC from Hugging Face Repository...")

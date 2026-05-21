@@ -49,6 +49,6 @@ def merge_hdf5_files(target_dir, output_filename="merge.hdf5"):
 # ==========================================
 if __name__ == "__main__":
     # Point this to the folder containing your 2019.h5, 2020.h5, etc.
-    DATA_DIRECTORY = "datasets/waveform_h5/"
+    DATA_DIRECTORY = "../datasets/waveform_h5/"
     
     merge_hdf5_files(DATA_DIRECTORY, output_filename="merged_bigger.hdf5")

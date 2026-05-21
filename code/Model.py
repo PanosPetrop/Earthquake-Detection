@@ -27,32 +27,32 @@ class EventDetectionLSTM(nn.Module):
         self.lstm = nn.LSTM(
             input_size=cnn_features * 2, 
             hidden_size=hidden_size, 
-            num_layers=lstm_layers, # Upgraded to 2 layers
+            num_layers=lstm_layers, # 2 layers
             batch_first=True,
             bidirectional=True 
         )
         
-        # --- 3. The Output Classifier ---
+        # --- 3.  Output Classifier ---
         self.fc = nn.Linear(hidden_size * 2, 1)
 
     def forward(self, x):
-        # Incoming 'x' shape: (Batch, TimeSteps, Channels) e.g., [32, 3000, 3]
+        # Η μορφή του X: (Batch, TimeSteps, Channels) π.χ. [32, 3000, 3]
         
-        # CRITICAL: PyTorch Conv1d expects (Batch, Channels, TimeSteps)
-        # We must swap the dimensions before the CNN
-        x = x.permute(0, 2, 1) # Shape becomes: [32, 3, 3000]
+        # Conv1d περιμένει (Batch, Channels, TimeSteps)
+        # Εναλλαγή των διαστάσεων για το CNN
+        x = x.permute(0, 2, 1) # Shape : [32, 3, 3000]
         
-        # Pass through CNN
-        x = self.cnn(x)        # Shape becomes: [32, 32_features, 3000]
+        # Πέρασε μέσα από το CNN
+        x = self.cnn(x) # Shape : [32, 32_features, 3000]
         
-        # CRITICAL: PyTorch LSTM (with batch_first=True) expects (Batch, TimeSteps, Features)
-        # We must swap them back
+        # CRITICAL:  LSTM (with batch_first=True) περιμένει (Batch, TimeSteps, Features)
+        # Εναλλαγή των διαστάσεων για το LSTM
         x = x.permute(0, 2, 1) # Shape becomes: [32, 3000, 32_features]
         
-        # Pass through LSTM
+        # Πέρασε μέσα από το LSTM
         lstm_out, _ = self.lstm(x) # Shape: [32, 3000, hidden_size*2]
         
-        # Pass through Linear layer to get final boxcar envelope
+        # Πέρασε μέσα από το γραμμικό layer για να πάρουμε τα logits
         logits = self.fc(lstm_out) # Shape: [32, 3000, 1]
         
         return logits
