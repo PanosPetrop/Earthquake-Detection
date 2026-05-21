@@ -1,8 +1,8 @@
 from Dataset import create_dataloaders
 from Model import *
 from tqdm import tqdm
-from sklearn.metrics import precision_score, recall_score, f1_score
-
+from sklearn.metrics import precision_score, recall_score, f1_score, accuracy_score
+import os
 import torch
 
 def create_boxcar_targets(picks, window_size=3000, coda_multiplier=1.5):
@@ -120,26 +120,77 @@ def plot_detection_results(waveform, target, prediction, sample_rate=100, sample
 
 
     plt.tight_layout(pad=2.0, h_pad=2.0)
+    os.makedirs('../train_vs_val_curve', exist_ok=True)
     plt.savefig(f"../test_results/test_{sample_idx}.png")
     plt.close(fig) 
 
+def plot_train_val_loss_per_epoch(train_losses, val_losses, epochs):
+    plt.figure(figsize=(10, 6))
+    plt.plot(range(1, epochs + 1), train_losses, label='Training Loss', color='blue', linewidth=2)
+    plt.plot(range(1, epochs + 1), val_losses, label='Validation Loss', color='red', linewidth=2)
+
+    plt.title('Training and Validation Loss per Epoch (Baseline)')
+    plt.xlabel('Epochs')
+    plt.ylabel('Average Loss')
+    plt.legend()
+    plt.grid(True)
+    os.makedirs('../train_vs_val_curve', exist_ok=True)
+    plt.savefig('../train_vs_val_curve/loss_learning_curve.png')
+    
+def calculate_batch_iou(preds, targets, threshold=0.5):
+    # Εφαρμόζουμε σιγμοειδή (sigmoid) επειδή χρησιμοποιούμε BCEWithLogitsLoss
+    probabilities = torch.sigmoid(preds)
+    
+    # Μετατροπή σε 0 ή 1 με βάση το threshold
+    preds_binary = (probabilities > threshold).float()
+    targets_binary = targets.float()
+    
+    # Υπολογισμός Τομής (Intersection) και Ένωσης (Union)
+    # find where BOTH are 1
+    intersection = (preds_binary * targets_binary).sum(dim=1) 
+    # find where EITHER is 1
+    union = (preds_binary + targets_binary).clamp(0, 1).sum(dim=1) 
+    
+    # Αποφυγή διαίρεσης με το μηδέν (αν ένα δείγμα δεν έχει καθόλου άσους ούτε στο target ούτε στο pred)
+    epsilon = 1e-7
+    iou = (intersection + epsilon) / (union + epsilon)
+    
+    # Επιστρέφει το μέσο IoU του συγκεκριμένου batch
+    return iou.mean().item()
+
 if __name__ == "__main__":
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    print(f"Using device: {device}")
+    print(f"Running on: {device}")
     batch_size = 32
     random_seed = 10
-    num_epochs = 10
+    #num_epochs = 10
+    #num_epochs = 30
+    num_epochs = 4
+
     
     model = EventDetectionLSTM().to(device)
     optim = torch.optim.Adam(model.parameters(), lr=1e-3)
+    #scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optim, mode='min', patience=2, factor=0.5 ,verbose=True)
     H5_PATH = "../datasets/waveform_h5/merged_bigger.hdf5" #DATASET PATH
     train_loader, val_loader, test_loader = create_dataloaders(H5_PATH, batch_size=batch_size, random_seed=random_seed)
     #print(train_loader)
     criterion = nn.BCEWithLogitsLoss()
+
+    # Ενισχύει το βάρος των θετικών δειγμάτων (σεισμοί) για να αντιμετωπίσει την ανισορροπία
+    #criterion = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([10.0]).to(device)) 
+
+    best_val_loss = float('inf')  # Ξεκινάει από το άπειρο
+    best_epoch = 0
+
+    train_losses = [] # για plotting
+    val_losses = [] # για plotting
+    train_ious = []     
+    val_ious = []       #
     
     for epoch in range(num_epochs):
         model.train()
         total_loss = 0.0
+        total_train_iou = 0.0
         for batch in tqdm(train_loader, desc=f"Epoch {epoch+1}/{num_epochs}"):
             #print(batch)
             waveforms, picks = batch
@@ -161,14 +212,34 @@ if __name__ == "__main__":
             loss = criterion(logits, targets)
             loss.backward()
             optim.step()
+
+            # print(f'logits: {logits}')
+            # print(f'targets: {targets}')
+            # IoU = compute_iou(logits, targets)
+            # total_IoU += IoU.item()
             
             total_loss += loss.item()
+
+            batch_iou = calculate_batch_iou(logits, targets)
+            total_train_iou += batch_iou
            
         avg_loss = total_loss / len(train_loader)
-        print(f"Epoch {epoch+1} Average Loss: {avg_loss:.4f}")
+        avg_train_iou = total_train_iou / len(train_loader)
+        # scheduler.step(avg_val_loss)
+        # current_lr = optimizer.param_groups[0]['lr']
+
+        print(f"Epoch {epoch+1} Average Loss: {avg_loss:.4f} | Average Train IoU: {avg_train_iou:.4f}")
+        #print(f"Current learning rate: {current_lr:.6f}")
         
         total_val_loss = 0.0
         model.eval()
+
+        total_val_loss = 0.0
+        total_val_iou = 0.0
+
+        best_val_loss = float('inf')  # Ξεκινάει από το άπειρο
+        best_epoch = 0
+
         with torch.no_grad():
             for batch in val_loader:
                 waveforms, picks = batch
@@ -178,13 +249,26 @@ if __name__ == "__main__":
                 
                 targets = create_boxcar_targets(picks)
                 targets = targets.to(device)
-                
                 val_loss = criterion(logits, targets)
                 total_val_loss += val_loss.item()
+
+
+                if val_loss < best_val_loss:
+                    best_val_loss = val_loss
+                    best_epoch = epoch + 1
+                    os.makedirs("../best_model", exist_ok=True)
+                    torch.save(model.state_dict(), "../best_model/best_model.pth")
+
+                batch_val_iou = calculate_batch_iou(logits, targets)
+                avg_val_iou = total_val_iou / len(val_loader)
+                total_val_iou += batch_val_iou
         
         avg_val_loss = total_val_loss / len(val_loader)
-        print(f"Epoch {epoch+1} Average Validation Loss: {avg_val_loss:.4f}")
-    
+        print(f"Epoch {epoch+1} Average Validation Loss: {avg_val_loss:.4f} | Average Validation IoU: {avg_val_iou:.4f}")
+
+        # Αποθήκευση των απωλειών για το plotting    
+        train_losses.append(avg_loss)
+        val_losses.append(avg_val_loss)
     
     # Τώρα που το μοντέλο έχει εκπαιδευτεί, ας το αξιολογήσουμε στο test set και να υπολογίσουμε τις μετρικές 
     model.eval()
@@ -192,7 +276,8 @@ if __name__ == "__main__":
 
     all_targets = []
     all_preds = []
-    
+
+
     with torch.no_grad():
             for i, batch in enumerate(tqdm(test_loader, desc="Testing")):
                 waveforms, picks = batch
@@ -217,29 +302,34 @@ if __name__ == "__main__":
                 all_preds.append(preds.cpu().numpy().flatten())
 
                 # Plotting για τα πρώτα δείγματα
-                if i < 5: 
+                if i < 25: 
                     plot_detection_results(waveforms, targets, logits, sample_idx=0) # sample_idx=0 για το πρώτο του batch
                     
         # Συγκέντρωση όλων των αποτελεσμάτων σε δύο μεγάλα arrays
     all_targets = np.concatenate(all_targets)
     all_preds = np.concatenate(all_preds)
 
+    print("\n" + "="*30)
+    print(f"Best model found at epoch {best_epoch} with validation loss: {best_val_loss:.4f} and has been saved to '../best_model/best_model.pth'")
+
+    avg_test_loss = total_test_loss / len(test_loader)
     # Υπολογισμός Μετρικών
+    accuracy = accuracy_score(all_targets, all_preds)
     precision = precision_score(all_targets, all_preds)
     recall = recall_score(all_targets, all_preds)
     f1 = f1_score(all_targets, all_preds)
-    avg_test_loss = total_test_loss / len(test_loader)
-
+    
     print("\n" + "="*30)
     print("TEST SET RESULTS")
-    print(f"Average Loss: {avg_test_loss:.4f}")
-    print(f"Precision:    {precision:.4f}  (Πόσο σίγουρο είναι το μοντέλο όταν βρίσκει σεισμό)")
-    print(f"Recall:       {recall:.4f}  (Πόσο ποσοστό των σεισμών όντως εντόπισε)")
-    print(f"F1-Score:     {f1:.4f}  (Ισορροπία μεταξύ των δύο)")
-    print("="*30)
-                
-    avg_test_loss = total_test_loss / len(test_loader)
     print(f"Average Test Loss: {avg_test_loss:.4f}")
+    print(f"Accuracy:   {accuracy:.4f}")
+    print(f"Precision:    {precision:.4f}")
+    print(f"Recall:       {recall:.4f}")
+    print(f"F1-Score:     {f1:.4f}")
+    print("="*30)
+
+    # train vs val curve            
+    plot_train_val_loss_per_epoch(train_losses, val_losses, num_epochs)
     
 
     
