@@ -10,13 +10,13 @@ class EventDetectionLSTM(nn.Module):
         self.cnn = nn.Sequential(
             # Layer 1: Wider kernel (11) to catch broader frequency 
             # Πιο πλατής πυρήνας για να εντοπίζει τις μεγάλες διακυμάνσης της συνχότητας
-            nn.Conv1d(in_channels=input_channels, out_channels=cnn_features, kernel_size=21, padding='same'),
+            nn.Conv1d(in_channels=input_channels, out_channels=cnn_features, kernel_size=15, padding='same'),
             nn.BatchNorm1d(cnn_features),
             nn.ReLU(),
             
             # Layer 2: Tighter kernel (7) to refine the features
             # Λεπτότερος πυρήνας για αναδιατυπώσει τα χαρακτηριστικά
-            nn.Conv1d(in_channels=cnn_features, out_channels=cnn_features * 2, kernel_size=7, padding='same'),
+            nn.Conv1d(in_channels=cnn_features, out_channels=cnn_features * 2, kernel_size=3, padding='same'),
             nn.BatchNorm1d(cnn_features * 2),
             nn.ReLU()
         )
@@ -25,9 +25,10 @@ class EventDetectionLSTM(nn.Module):
         # 
         # Διαβάζει τις ακολουθίες που παρέχει το CNN layer για να αναγωρίσει αν υπάρχει γεγονός
         self.lstm = nn.LSTM(
-            input_size=cnn_features * 2, 
+             input_size=cnn_features * 2, 
+            #input_size=input_channels,
             hidden_size=hidden_size, 
-            num_layers=lstm_layers, # 2 layers
+            num_layers=2, # 2 layers
             batch_first=True,
             bidirectional=True 
         )
@@ -36,10 +37,10 @@ class EventDetectionLSTM(nn.Module):
         self.fc = nn.Linear(hidden_size * 2, 1)
 
     def forward(self, x):
-        # Η μορφή του X: (Batch, TimeSteps, Channels) π.χ. [32, 3000, 3]
+        # Η μορφή του X: (Batch, TimeSteps, Channels)  [32, 3000, 3]
         
         # Conv1d περιμένει (Batch, Channels, TimeSteps)
-        # Εναλλαγή των διαστάσεων για το CNN
+        # Εναλλαγή των διαστάσεων για το CNNs
         x = x.permute(0, 2, 1) # Shape : [32, 3, 3000]
         
         # Πέρασε μέσα από το CNN

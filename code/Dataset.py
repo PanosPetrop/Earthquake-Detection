@@ -6,6 +6,7 @@ import numpy as np
 import random
 from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
+
 class NCEDCDataset(Dataset):
     def __init__(self, h5_file, mode="train", window_size=3000, trace_list=None):
         self.h5_file = h5_file
@@ -186,24 +187,9 @@ def create_dataloaders(h5_path, batch_size=16, splits=(0.8, 0.1, 0.1), random_se
     test_ds = NCEDCDataset(h5_path, mode="test", trace_list=test_traces)
     
     # 7. Δημιουργία dataloaders απο την torch για αποδοτικότερη διαχείριση των δεδομένων κατα την εκμάθηση
-    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=0, pin_memory=True)
-    val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False, num_workers=0, pin_memory=True)
-    test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False, num_workers=0, pin_memory=True)
+    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=4, pin_memory=True)
+    val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False, num_workers=4, pin_memory=True)
+    test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False, num_workers=4, pin_memory=True)
     
     return train_loader, val_loader, test_loader
 
-# if __name__ == "__main__":
-
-    #debugging
-
-    # batch_size = 32
-    # random_seed = 10
-    # num_epochs = 10
-
-
-    # H5_PATH = "datasets/waveform_h5/merged_bigger.hdf5" #DATASET PATH
-    # train_loader, val_loader, test_loader = create_dataloaders(H5_PATH, batch_size=batch_size, random_seed=random_seed)
-
-    # print(f' train loader: {train_loader}')
-    # print(f' val loader: {val_loader}')
-    # print(f' test loader: {test_loader}')
