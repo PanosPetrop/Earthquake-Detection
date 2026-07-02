@@ -42,3 +42,9 @@ Seismic Event Duration = (Ts - Tp) * Coda_Multiplier where s and p represents th
 [1]‘NCEDC: Northern California Earthquake Data Center’. Accessed: May 24, 2026. [Online]. Available: https://ncedc.org/ 
 
 [2] AI4EPS, ‘quakeflow_nc’. Hugging Face. doi: 10.57967/HF/0716. 
+
+# How to Run?
+
+1. py download.py
+2. py merge.py
+3. py main.py
